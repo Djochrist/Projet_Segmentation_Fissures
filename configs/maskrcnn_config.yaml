@@ -15,7 +15,7 @@ MODEL:
   FPN:
     IN_FEATURES: ["res2", "res3", "res4", "res5"]
   ANCHOR_GENERATOR:
-    SIZES: [[32], [64], [128], [256], [512]]
+    SIZES: [[16], [32], [64], [128], [256]]  # Tailles réduites : les fissures sont souvent fines/petites
     ASPECT_RATIOS: [[0.25, 0.5, 1.0, 2.0, 4.0]]  # Ratios adaptés aux fissures longues
   RPN:
     IN_FEATURES: ["p2", "p3", "p4", "p5", "p6"]
@@ -73,16 +73,27 @@ DATALOADER:
 
 # --- Solver (optimiseur) ---
 SOLVER:
-  BASE_LR: 0.0001                   # LR réduit pour fine-tuning
+  BASE_LR: 0.001                    # 10x le réglage d'origine (0.0001). Repère de
+                                      # référence Detectron2 pour du fine-tuning avec
+                                      # IMS_PER_BATCH=4 (règle de mise à l'échelle
+                                      # linéaire : LR de base 0.02 pour batch=16 →
+                                      # ~0.005 pour batch=4 ; on reste un peu en
+                                      # dessous car dataset petit et peu de classes,
+                                      # mais 0.0001 était nettement trop faible pour
+                                      # apprendre en seulement 10000 itérations).
+                                      # Le gradient clipping (CLIP_GRADIENTS ci-dessous)
+                                      # protège contre l'instabilité si le LR est trop
+                                      # élevé. Si vous voyez `loss: nan` dans les logs,
+                                      # redescendez à 0.0005 ou 0.00025.
   BIAS_LR_FACTOR: 2.0
   WEIGHT_DECAY: 0.0001
   WEIGHT_DECAY_NORM: 0.0
   MOMENTUM: 0.9
   MAX_ITER: 10000                   # Iterations totales
-  STEPS: [7000, 9000]              # Paliers de réduction LR (facteur 10)
+  STEPS: [6000, 8500]               # Paliers de réduction LR (facteur 10)
   GAMMA: 0.1
   WARMUP_FACTOR: 0.001
-  WARMUP_ITERS: 500
+  WARMUP_ITERS: 800                 # Warmup un peu plus long car LR de base plus élevé
   WARMUP_METHOD: "linear"
   CHECKPOINT_PERIOD: 500           # Sauvegarder toutes les N itérations
   IMS_PER_BATCH: 4                 # Images par batch (ajuster selon VRAM)
@@ -95,6 +106,9 @@ SOLVER:
     ENABLED: true                  # Mixed precision
 
 # --- Augmentation (input) ---
+# Le flip horizontal seul ne suffit pas pour un petit dataset (697 images) :
+# train_maskrcnn.py ajoute aussi flip vertical + rotation + luminosité/contraste
+# via un DatasetMapper personnalisé (voir FissureTrainer.build_train_loader).
 INPUT:
   MIN_SIZE_TRAIN: [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800]
   MAX_SIZE_TRAIN: 1333
