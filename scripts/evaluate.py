@@ -252,6 +252,11 @@ def evaluate_maskrcnn(args, output_dir: Path) -> dict:
     cfg.MODEL.WEIGHTS = args.model
     cfg.MODEL.DEVICE  = "cuda" if args.device not in ("cpu", None) else "cpu"
     cfg.DATASETS.TEST = (catalog_name,)
+    # Voir train_maskrcnn.py : les exports Roboflow COCO mélangent parfois
+    # plusieurs représentations de segmentation selon les instances, ce qui
+    # fait planter Detectron2 en mode "polygon". Le mode "bitmask" est
+    # tolérant à tous les formats et évite ce plantage.
+    cfg.INPUT.MASK_FORMAT = "bitmask"
     output_dir.mkdir(parents=True, exist_ok=True)
     cfg.OUTPUT_DIR = str(output_dir / "maskrcnn_eval")
     cfg.freeze()

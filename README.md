@@ -493,6 +493,15 @@ MODEL:
 > au démarrage ("Classes détectées dans le JSON COCO : [...]") si ce n'est
 > pas 1.
 
+> **Note — format de masque "bitmask".** Les exports Roboflow COCO
+> mélangent parfois plusieurs représentations de segmentation selon les
+> instances (polygones imbriqués différemment, RLE...), ce qui fait planter
+> Detectron2 en mode `mask_format="polygon"` par défaut avec l'erreur
+> `ValueError: Cannot create polygons: Expect a list of polygons per
+> instance. Got '<class 'numpy.ndarray'>' instead`. `train_maskrcnn.py` et
+> `evaluate.py` configurent donc `cfg.INPUT.MASK_FORMAT = "bitmask"`, un mode
+> tolérant à tous ces formats, pour éviter ce plantage.
+
 ---
 
 ## Licence

@@ -319,6 +319,14 @@ def build_cfg(args, yaml_cfg: dict, num_classes: int):
     cfg.INPUT.MIN_SIZE_TEST     = input_cfg.get("MIN_SIZE_TEST", 800)
     cfg.INPUT.MAX_SIZE_TEST     = input_cfg.get("MAX_SIZE_TEST", 1333)
     cfg.INPUT.RANDOM_FLIP       = input_cfg.get("RANDOM_FLIP", "horizontal")
+    # Les exports Roboflow COCO mélangent parfois plusieurs représentations de
+    # segmentation (polygones imbriqués différemment, RLE...) selon les
+    # instances. Le mode "polygon" de Detectron2 est strict et plante dès
+    # qu'une annotation ne correspond pas exactement au format attendu
+    # (ValueError: "Expect a list of polygons per instance. Got ndarray").
+    # Le mode "bitmask" est tolérant à tous ces formats (polygones, RLE,
+    # masques bruts) et est utilisé ici pour éviter ce plantage.
+    cfg.INPUT.MASK_FORMAT       = "bitmask"
 
     # Sortie
     output_dir = args.output_dir if args.output_dir else yaml_cfg.get("OUTPUT_DIR", "outputs/maskrcnn/run")
