@@ -203,24 +203,55 @@ def get_thing_classes(annotation_file: str) -> list:
     return classes
 
 
+def clean_coco_categories(annotation_file: str, reference_classes: list) -> None:
+    """Réécrit la liste 'categories' du fichier COCO pour ne garder que les
+    catégories réellement utilisées dans les annotations, alignées sur
+    `reference_classes`. Indispensable car `load_coco_json` de Detectron2
+    recalcule lui-même `thing_classes` à partir du JSON brut (catégories
+    fantômes Roboflow incluses) à chaque chargement paresseux du dataset —
+    sans ce nettoyage, cette valeur recalculée entre en conflit avec celle
+    déjà enregistrée dans MetadataCatalog et lève une AssertionError.
+    """
+    with open(annotation_file) as f:
+        coco = json.load(f)
+
+    used_ids = {ann["category_id"] for ann in coco.get("annotations", [])}
+    categories = sorted(
+        [c for c in coco.get("categories", []) if c["id"] in used_ids],
+        key=lambda c: c["id"]
+    )
+
+    if [c["name"] for c in categories] == list(reference_classes) and len(categories) == len(coco.get("categories", [])):
+        return
+
+    coco["categories"] = categories
+    with open(annotation_file, "w") as f:
+        json.dump(coco, f)
+
+
 def register_datasets(splits: dict):
     from detectron2.data.datasets import register_coco_instances
-    from detectron2.data import MetadataCatalog
+    from detectron2.data import DatasetCatalog, MetadataCatalog
 
     mapping = {"train": "fissures_train", "valid": "fissures_val", "test": "fissures_test"}
     thing_classes = get_thing_classes(splits["train"]["annotation_file"])
+
     for split_key, catalog_name in mapping.items():
         if split_key in splits:
             s = splits[split_key]
-            try:
-                register_coco_instances(
-                    catalog_name,
-                    {"thing_classes": thing_classes},
-                    s["annotation_file"],
-                    s["image_dir"],
-                )
-            except AssertionError:
-                pass
+            clean_coco_categories(s["annotation_file"], thing_classes)
+
+            if catalog_name in DatasetCatalog.list():
+                DatasetCatalog.remove(catalog_name)
+            if catalog_name in MetadataCatalog:
+                MetadataCatalog.remove(catalog_name)
+
+            register_coco_instances(
+                catalog_name,
+                {"thing_classes": thing_classes},
+                s["annotation_file"],
+                s["image_dir"],
+            )
             print(f"  Dataset enregistré : {catalog_name}")
     return thing_classes
 
