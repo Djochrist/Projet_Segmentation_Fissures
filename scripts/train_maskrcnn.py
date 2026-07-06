@@ -218,17 +218,29 @@ def add_healthy_walls_coco(healthy_img_dir: Path, splits: dict, dataset_dir: Pat
 
 def get_thing_classes(annotation_file: str) -> list:
     """
-    Lit les classes réelles depuis le fichier COCO (par id croissant), au lieu
-    de supposer un nom de classe fixe ("fissure"). Les exports Roboflow COCO
-    contiennent parfois une catégorie "supercategory" (id 0) en plus de la
-    vraie classe (ex: ['segmentation-fissures', 'crack']) — on les garde
-    toutes pour rester cohérent avec les annotations réellement présentes
-    dans le JSON, quel que soit le nom donné par l'export.
+    Ne conserve que les catégories réellement utilisées dans les annotations.
+    Évite le faux parent Roboflow 'segmentation-fissures'.
     """
     with open(annotation_file) as f:
         coco = json.load(f)
-    categories = sorted(coco.get("categories", []), key=lambda c: c["id"])
-    return [c["name"] for c in categories]
+
+    used_ids = {
+        ann["category_id"]
+        for ann in coco.get("annotations", [])
+    }
+
+    categories = [
+        c for c in coco.get("categories", [])
+        if c["id"] in used_ids
+    ]
+
+    categories = sorted(categories, key=lambda c: c["id"])
+
+    classes = [c["name"] for c in categories]
+
+    print(f"Classes réellement utilisées : {classes}")
+
+    return classes
 
 
 def register_datasets(splits: dict):
@@ -404,6 +416,8 @@ def train(args):
 
     resume = args.resume or (args.resume_from is not None)
     print(f"\n🚀 Démarrage de l'entraînement (resume={resume})...\n")
+    print("MASK_FORMAT =", cfg.INPUT.MASK_FORMAT)
+    print("NUM_CLASSES =", cfg.MODEL.ROI_HEADS.NUM_CLASSES)
 
     trainer = FissureTrainer(cfg)
     trainer.train(resume=resume)
