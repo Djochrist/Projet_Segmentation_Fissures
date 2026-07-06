@@ -270,6 +270,8 @@ def build_cfg(args, yaml_cfg: dict, num_classes: int):
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST   = model_cfg.get("ROI_HEADS", {}).get("SCORE_THRESH_TEST", 0.5)
     cfg.MODEL.ROI_HEADS.NMS_THRESH_TEST     = model_cfg.get("ROI_HEADS", {}).get("NMS_THRESH_TEST", 0.5)
     cfg.MODEL.ANCHOR_GENERATOR.ASPECT_RATIOS = [[0.25, 0.5, 1.0, 2.0, 4.0]]
+    anchor_sizes = model_cfg.get("ANCHOR_GENERATOR", {}).get("SIZES")
+    cfg.MODEL.ANCHOR_GENERATOR.SIZES = anchor_sizes if anchor_sizes else [[16], [32], [64], [128], [256]]
     cfg.MODEL.BACKBONE.FREEZE_AT            = model_cfg.get("BACKBONE", {}).get("FREEZE_AT", 2)
 
     cfg.DATASETS.TRAIN = ("fissures_train",)
@@ -322,6 +324,8 @@ class FissureTrainer:
     def __init__(self, cfg):
         from detectron2.engine import DefaultTrainer
         from detectron2.evaluation import COCOEvaluator
+        from detectron2.data import build_detection_train_loader, DatasetMapper
+        from detectron2.data import transforms as T
 
         class _Trainer(DefaultTrainer):
             @classmethod
@@ -329,6 +333,27 @@ class FissureTrainer:
                 if output_folder is None:
                     output_folder = os.path.join(cfg.OUTPUT_DIR, "inference")
                 return COCOEvaluator(dataset_name, cfg, True, output_folder)
+
+            @classmethod
+            def build_train_loader(cls, cfg):
+                # Petit dataset (697 images) : le flip horizontal seul ne suffit pas.
+                # On ajoute flip vertical + rotation + luminosité/contraste, adaptés
+                # à des fissures qui peuvent apparaître sous n'importe quel angle et
+                # avec des conditions d'éclairage variables.
+                augmentations = [
+                    T.ResizeShortestEdge(
+                        cfg.INPUT.MIN_SIZE_TRAIN, cfg.INPUT.MAX_SIZE_TRAIN,
+                        cfg.INPUT.MIN_SIZE_TRAIN_SAMPLING,
+                    ),
+                    T.RandomFlip(prob=0.5, horizontal=True, vertical=False),
+                    T.RandomFlip(prob=0.5, horizontal=False, vertical=True),
+                    T.RandomRotation(angle=[-15, 15], expand=False, sample_style="range"),
+                    T.RandomBrightness(0.8, 1.2),
+                    T.RandomContrast(0.8, 1.2),
+                    T.RandomSaturation(0.9, 1.1),
+                ]
+                mapper = DatasetMapper(cfg, is_train=True, augmentations=augmentations)
+                return build_detection_train_loader(cfg, mapper=mapper)
 
         self.TrainerCls = _Trainer
         self.cfg = cfg
