@@ -54,10 +54,10 @@ erreurs « dataset introuvable » liées à l'organisation propre de chaque Goog
 
 | Propriété | Valeur |
 |---|---|
-| **Architecture** | YOLOv11x-seg (extra-large, meilleure précision) |
+| **Architecture** | YOLOv11m-seg (modèle intermédiaire, plus stable pour petit dataset) |
 | **Bibliothèque** | Ultralytics ≥ 8.3 |
 | **Tâche** | Instance segmentation |
-| **Poids de base** | `yolo11x-seg.pt` (COCO pré-entraîné) |
+| **Poids de base** | `yolo11m-seg.pt` (COCO pré-entraîné) |
 | **Fine-tuning** | Oui (couches backbone partiellement gelées via LR réduit) |
 
 ### Mask R-CNN

@@ -3,11 +3,15 @@ import sys
 import json
 import shutil
 import argparse
+import subprocess
 import yaml
-import cv2
-import numpy as np
 from pathlib import Path
 from datetime import datetime
+
+try:
+    import cv2
+except ImportError:  # pragma: no cover - dépendance optionnelle pour les tests
+    cv2 = None
 
 
 def parse_args():
@@ -21,7 +25,10 @@ def parse_args():
     parser.add_argument("--max-iter", type=int, default=None)
     parser.add_argument("--batch", type=int, default=None)
     parser.add_argument("--lr", type=float, default=None)
+    parser.add_argument("--device", type=str, default=None)
     parser.add_argument("--output-dir", type=str, default=None)
+    parser.add_argument("--eval-test", action="store_true",
+                        help="Évaluer automatiquement le split test après l'entraînement")
     return parser.parse_args()
 
 
@@ -165,6 +172,9 @@ def add_healthy_walls_coco(healthy_img_dir: Path, splits: dict, dataset_dir: Pat
 
     for img_path in images:
         if img_path.name in existing_filenames:
+            continue
+        if cv2 is None:
+            print(f"  [murs_sains] ⚠ cv2 non disponible ; image ignorée : {img_path}")
             continue
         img = cv2.imread(str(img_path))
         if img is None:
@@ -320,6 +330,34 @@ def build_cfg(args, yaml_cfg: dict, num_classes: int):
     return cfg
 
 
+def find_maskrcnn_checkpoint(output_dir: Path) -> Path:
+    final_ckpt = output_dir / "model_final.pth"
+    if final_ckpt.exists():
+        return final_ckpt
+    last_ckpt = output_dir / "last_checkpoint"
+    if last_ckpt.exists():
+        with open(last_ckpt) as f:
+            line = f.readline().strip()
+        candidate = output_dir / line
+        if candidate.exists():
+            return candidate
+    raise FileNotFoundError(f"Aucun checkpoint Mask R-CNN trouvé dans {output_dir}")
+
+
+def run_maskrcnn_test_eval(model_path: Path, data_root: Path, device: str, output_dir: Path):
+    eval_script = Path(__file__).resolve().parent / "evaluate.py"
+    cmd = [sys.executable, str(eval_script),
+           "--model", str(model_path),
+           "--data-root", str(data_root),
+           "--model-type", "maskrcnn",
+           "--split", "test",
+           "--output-dir", str(output_dir)]
+    if device is not None:
+        cmd += ["--device", str(device)]
+    print(f"\n▶ Lancement de l'évaluation test : {' '.join(cmd)}")
+    subprocess.run(cmd, check=True)
+
+
 class FissureTrainer:
     def __init__(self, cfg):
         from detectron2.engine import DefaultTrainer
@@ -405,6 +443,15 @@ def train(args):
     print("  Entraînement terminé")
     print("="*60)
     print(f"  Output : {cfg.OUTPUT_DIR}")
+
+    if args.eval_test:
+        try:
+            model_path = find_maskrcnn_checkpoint(Path(cfg.OUTPUT_DIR))
+            eval_output_dir = Path(cfg.OUTPUT_DIR) / "eval_test"
+            run_maskrcnn_test_eval(model_path, data_root, args.device, eval_output_dir)
+        except Exception as e:
+            print(f"⚠ Échec de l'évaluation test : {e}")
+
     print(f"\n  Reprise : python scripts/train_maskrcnn.py --data-root <DATA> --resume")
 
 

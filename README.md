@@ -1,7 +1,7 @@
 # Segmentation de Fissures — YOLOv11 & Mask R-CNN
 
 Fine-tuning pour la **segmentation d'instances de fissures** sur des images de murs.  
-Deux pipelines indépendants : **YOLOv11x-seg** (Ultralytics) et **Mask R-CNN** (Detectron2).  
+Deux pipelines indépendants : **YOLOv11m-seg** (Ultralytics) et **Mask R-CNN** (Detectron2).  
 Module d'**analyse morphologique** post-inférence : orientation, localisation, largeur, longueur, sinuosité, indice de danger.
 
 ---
@@ -139,6 +139,15 @@ Surcharger des hyperparamètres à la volée :
   --device 0
 ```
 
+Pour lancer automatiquement l'évaluation sur `test` une fois l'entraînement terminé :
+
+```python
+!python scripts/train_yolov11.py \
+  --data-root /content/drive/MyDrive/segmentation_fissures.v6i.yolov11 \
+  --config configs/yolov11_config.yaml \
+  --eval-test
+```
+
 ---
 
 ### 7 — Entraînement Mask R-CNN
@@ -173,7 +182,14 @@ Reprendre depuis un checkpoint précis :
   --data-root /content/drive/MyDrive/segmentation_fissures.v7i.coco-segmentation \
   --resume-from outputs/maskrcnn/run/model_0005000.pth
 ```
+Pour exécuter automatiquement l'évaluation du split `test` après entraînement :
 
+```python
+!python scripts/train_maskrcnn.py \
+  --data-root /content/drive/MyDrive/segmentation_fissures.v7i.coco-segmentation \
+  --config configs/maskrcnn_config.yaml \
+  --eval-test
+```
 Surcharger des hyperparamètres :
 
 ```python

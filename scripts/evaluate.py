@@ -147,6 +147,51 @@ def print_metrics(metrics: dict, title: str = "Résultats"):
     print()
 
 
+def _normalize_metric_value(value):
+    if value is None:
+        return None
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return None
+    if value > 1.5:
+        return round(value / 100.0, 4)
+    return round(value, 4)
+
+
+def _compute_f1(precision, recall):
+    if precision is None or recall is None:
+        return None
+    try:
+        precision = float(precision)
+        recall = float(recall)
+    except (TypeError, ValueError):
+        return None
+    if precision + recall <= 0:
+        return None
+    return round(2 * precision * recall / (precision + recall + 1e-8), 4)
+
+
+def normalize_maskrcnn_metrics(eval_results: dict) -> dict:
+    bbox = eval_results.get("bbox", {})
+    segm = eval_results.get("segm", {})
+    metrics = {}
+    metrics["box_map50"] = _normalize_metric_value(bbox.get("AP50"))
+    metrics["box_map5095"] = _normalize_metric_value(bbox.get("AP"))
+    metrics["box_map90"] = _normalize_metric_value(bbox.get("AP75"))
+    metrics["box_precision"] = _normalize_metric_value(bbox.get("AP50"))
+    metrics["box_recall"] = _normalize_metric_value(bbox.get("AR@100"))
+    metrics["box_f1"] = _compute_f1(metrics["box_precision"], metrics["box_recall"])
+
+    metrics["mask_map50"] = _normalize_metric_value(segm.get("AP50"))
+    metrics["mask_map5095"] = _normalize_metric_value(segm.get("AP"))
+    metrics["mask_map90"] = _normalize_metric_value(segm.get("AP75"))
+    metrics["mask_precision"] = _normalize_metric_value(segm.get("AP50"))
+    metrics["mask_recall"] = _normalize_metric_value(segm.get("AR@100"))
+    metrics["mask_f1"] = _compute_f1(metrics["mask_precision"], metrics["mask_recall"])
+    return metrics
+
+
 def evaluate_yolo(args, output_dir: Path) -> dict:
     try:
         from ultralytics import YOLO
@@ -289,22 +334,7 @@ def evaluate_maskrcnn(args, output_dir: Path) -> dict:
 
     metrics = {}
     try:
-        bbox = eval_results.get("bbox", {})
-        segm = eval_results.get("segm", {})
-        metrics["box_map50"]     = bbox.get("AP50", None)
-        metrics["box_map5095"]   = bbox.get("AP",   None)
-        metrics["box_map90"]     = bbox.get("AP75", None)
-        metrics["mask_map50"]    = segm.get("AP50", None)
-        metrics["mask_map5095"]  = segm.get("AP",   None)
-        metrics["mask_map90"]    = segm.get("AP75", None)
-        # detectron2/pycocotools rapportent toujours AP/AR en pourcentage (0-100).
-        # Diviser systématiquement par 100 pour rester cohérent avec le reste du
-        # rapport (échelle 0-1) — un seuil conditionnel (`> 1.5`) est trompeur car
-        # un modèle très faible peut avoir un AP déjà < 1.5, ce qui produisait un
-        # mélange d'échelles (ex : Box en fraction, Mask resté en pourcentage).
-        for k in list(metrics.keys()):
-            if metrics[k] is not None:
-                metrics[k] = round(metrics[k] / 100.0, 4)
+        metrics = normalize_maskrcnn_metrics(eval_results)
     except Exception as e:
         print(f"  ⚠ Extraction partielle (mAP) : {e}")
 

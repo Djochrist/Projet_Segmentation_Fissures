@@ -3,7 +3,7 @@
 # ============================================================
 
 # --- Modèle ---
-model: yolo11x-seg.pt          # Checkpoint pré-entraîné (poids ImageNet/COCO)
+model: yolo11m-seg.pt          # Modèle intermédiaire, plus adapté au petit dataset de fissures
 task: segment
 
 # --- Dataset ---
@@ -15,8 +15,8 @@ task: segment
 data: configs/dataset_yolo.yaml   # généré automatiquement par train_yolov11.py
 
 # --- Hyperparamètres d'entraînement ---
-epochs: 100
-patience: 20                  # Early stopping : arrêt si pas d'amélioration pendant N époques
+epochs: 80
+patience: 25                  # Early stopping plus tolérant pour les petites datasets
 batch: 8                      # Ajuster selon la VRAM disponible (16 si A100)
 imgsz: 640
 optimizer: AdamW
@@ -41,20 +41,20 @@ amp: true                     # Mixed precision (FP16)
 
 # --- Augmentation ---
 hsv_h: 0.015
-hsv_s: 0.7
-hsv_v: 0.4
-degrees: 10.0                 # Rotation (fissures apparaissent à toutes orientations)
-translate: 0.1
-scale: 0.5
-shear: 2.0
+hsv_s: 0.5
+hsv_v: 0.2
+degrees: 5.0                  # Rotation modérée pour éviter de déformer les fissures
+translate: 0.05
+scale: 0.25
+shear: 1.0
 perspective: 0.0001
-flipud: 0.3                   # Flip vertical (murs peuvent être analysés de différentes orientations)
+flipud: 0.2                   # Flip vertical modéré
 fliplr: 0.5
-mosaic: 1.0                   # Mosaic augmentation
-mixup: 0.1
-copy_paste: 0.1               # Utile pour la segmentation d'instances
+mosaic: 0.5                   # Mosaic moins agressif sur un petit dataset
+mixup: 0.0
+copy_paste: 0.0               # Réduire le bruit visuel sur les fissures fines
 auto_augment: randaugment
-erasing: 0.4
+erasing: 0.1
 crop_fraction: 1.0
 
 # --- Validation ---
@@ -65,7 +65,7 @@ save_json: true               # Sauvegarder les prédictions JSON (COCO format)
 plots: true                   # Générer les courbes de métriques
 
 # --- Inférence ---
-conf: 0.25
+conf: 0.1
 iou: 0.45
 max_det: 300
 retina_masks: true            # Masques haute résolution

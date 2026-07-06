@@ -2,6 +2,7 @@ import os
 import sys
 import shutil
 import argparse
+import subprocess
 import yaml
 from pathlib import Path
 
@@ -18,6 +19,8 @@ def parse_args():
     parser.add_argument("--imgsz", type=int, default=None)
     parser.add_argument("--device", type=str, default=None)
     parser.add_argument("--name", type=str, default=None)
+    parser.add_argument("--eval-test", action="store_true",
+                        help="Évaluer automatiquement le split test après l'entraînement")
     return parser.parse_args()
 
 
@@ -154,6 +157,30 @@ def build_dataset_yaml(splits: dict, output_path: Path) -> str:
     return str(output_path)
 
 
+def find_yolo_checkpoint(project_dir: Path) -> Path:
+    best = project_dir / "weights" / "best.pt"
+    last = project_dir / "weights" / "last.pt"
+    if best.exists():
+        return best
+    if last.exists():
+        return last
+    raise FileNotFoundError(f"Aucun checkpoint YOLO trouvé dans {project_dir / 'weights'}")
+
+
+def run_yolo_test_eval(model_path: Path, data_root: Path, device: str, output_dir: Path):
+    eval_script = Path(__file__).resolve().parent / "evaluate.py"
+    cmd = [sys.executable, str(eval_script),
+           "--model", str(model_path),
+           "--data-root", str(data_root),
+           "--model-type", "yolo",
+           "--split", "test",
+           "--output-dir", str(output_dir)]
+    if device is not None:
+        cmd += ["--device", str(device)]
+    print(f"\n▶ Lancement de l'évaluation test : {' '.join(cmd)}")
+    subprocess.run(cmd, check=True)
+
+
 def load_config(config_path: str) -> dict:
     with open(config_path) as f:
         return yaml.safe_load(f)
@@ -197,7 +224,7 @@ def train(args):
         model = YOLO(str(resume_path))
         train_kwargs = dict(resume=True)
     else:
-        model_name = cfg.get("model", "yolo11x-seg.pt")
+        model_name = cfg.get("model", "yolo11m-seg.pt")
         print(f"\n▶ Modèle de base : {model_name}")
         model = YOLO(model_name)
         train_kwargs = {}
@@ -270,6 +297,15 @@ def train(args):
     project_dir = Path(train_kwargs["project"]) / train_kwargs["name"]
     print(f"  Meilleurs poids : {project_dir / 'weights' / 'best.pt'}")
     print(f"  Derniers poids  : {project_dir / 'weights' / 'last.pt'}")
+
+    if args.eval_test:
+        try:
+            model_path = find_yolo_checkpoint(project_dir)
+            eval_output_dir = project_dir / "eval_test"
+            run_yolo_test_eval(model_path, data_root, overrides.get("device", cfg.get("device", 0)), eval_output_dir)
+        except Exception as e:
+            print(f"⚠ Échec de l'évaluation test : {e}")
+
     print(f"\n  Reprise : python scripts/train_yolov11.py --data-root <DATA> "
           f"--resume {project_dir / 'weights' / 'last.pt'}")
     return results
