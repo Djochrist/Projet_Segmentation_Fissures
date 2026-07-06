@@ -71,6 +71,60 @@ def _print_separator():
     print("─" * 60)
 
 
+def _compute_precision_recall_f1(coco_gt, dt_json_path: str, iou_type: str,
+                                  score_thresh: float = 0.5, iou_thr: float = 0.5):
+    """Calcule précision / rappel / F1 à un seuil de confiance et d'IoU donnés.
+
+    On réutilise directement les tableaux `precision`/`recall`/`scores` que
+    pycocotools calcule lui-même dans `COCOeval.accumulate()` (méthode
+    officielle, la même que celle utilisée pour l'AP/AR), plutôt que de
+    recompter les TP/FP/FN à la main. Pour chaque catégorie, pycocotools
+    donne, à chaque niveau de rappel R (101 points de 0 à 1), la précision
+    obtenue et le score de confiance minimal nécessaire pour l'atteindre.
+    On cherche donc le point de rappel le plus élevé encore accessible avec
+    un seuil de confiance >= score_thresh, et on lit précision/rappel à cet
+    endroit — pas de logique de comptage réinventée.
+    """
+    from pycocotools.cocoeval import COCOeval
+
+    coco_dt = coco_gt.loadRes(dt_json_path)
+    E = COCOeval(coco_gt, coco_dt, iou_type)
+    E.params.iouThrs = np.array([iou_thr])
+    E.params.areaRng = [[0, 1e5 ** 2]]
+    E.params.areaRngLbl = ["all"]
+    E.params.maxDets = [100]
+    E.evaluate()
+    E.accumulate()
+
+    # Tableaux [T, R, K, A, M] = [iouThrs, recallThrs, catégories, areaRng, maxDets]
+    # Ici T=A=M=1 (un seul seuil IoU, une seule plage d'aire, un seul maxDets).
+    precision_arr = E.eval["precision"][0, :, :, 0, 0]  # [R, K]
+    scores_arr = E.eval["scores"][0, :, :, 0, 0]        # [R, K]
+    recall_thrs = E.params.recThrs                       # [R]
+
+    n_cats = precision_arr.shape[1]
+    precisions, recalls = [], []
+    for k in range(n_cats):
+        p_k = precision_arr[:, k]
+        s_k = scores_arr[:, k]
+        valid = p_k > -1
+        if not np.any(valid):
+            continue
+        candidates = np.where(valid & (s_k >= score_thresh))[0]
+        if len(candidates) == 0:
+            precisions.append(0.0)
+            recalls.append(0.0)
+            continue
+        best_idx = candidates[-1]  # rappel max atteignable à ce seuil de confiance
+        precisions.append(float(p_k[best_idx]))
+        recalls.append(float(recall_thrs[best_idx]))
+
+    precision = float(np.mean(precisions)) if precisions else 0.0
+    recall = float(np.mean(recalls)) if recalls else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+    return precision, recall, f1
+
+
 def print_metrics(metrics: dict, title: str = "Résultats"):
     print("\n" + "="*60)
     print(f"  {title}")
@@ -240,18 +294,41 @@ def evaluate_maskrcnn(args, output_dir: Path) -> dict:
         metrics["box_map50"]     = bbox.get("AP50", None)
         metrics["box_map5095"]   = bbox.get("AP",   None)
         metrics["box_map90"]     = bbox.get("AP75", None)
-        metrics["box_precision"] = None
-        metrics["box_recall"]    = None
         metrics["mask_map50"]    = segm.get("AP50", None)
         metrics["mask_map5095"]  = segm.get("AP",   None)
         metrics["mask_map90"]    = segm.get("AP75", None)
-        metrics["mask_precision"]= None
-        metrics["mask_recall"]   = None
+        # detectron2/pycocotools rapportent toujours AP/AR en pourcentage (0-100).
+        # Diviser systématiquement par 100 pour rester cohérent avec le reste du
+        # rapport (échelle 0-1) — un seuil conditionnel (`> 1.5`) est trompeur car
+        # un modèle très faible peut avoir un AP déjà < 1.5, ce qui produisait un
+        # mélange d'échelles (ex : Box en fraction, Mask resté en pourcentage).
         for k in list(metrics.keys()):
-            if metrics[k] is not None and isinstance(metrics[k], float) and metrics[k] > 1.5:
+            if metrics[k] is not None:
                 metrics[k] = round(metrics[k] / 100.0, 4)
     except Exception as e:
-        print(f"  ⚠ Extraction partielle : {e}")
+        print(f"  ⚠ Extraction partielle (mAP) : {e}")
+
+    try:
+        dt_json = Path(cfg.OUTPUT_DIR) / "coco_instances_results.json"
+        if dt_json.exists():
+            from pycocotools.coco import COCO
+            coco_gt = COCO(str(ann_file))
+            score_thresh = args.score_thresh
+            box_p, box_r, box_f1 = _compute_precision_recall_f1(
+                coco_gt, str(dt_json), "bbox", score_thresh=score_thresh)
+            metrics["box_precision"] = round(box_p, 4)
+            metrics["box_recall"]    = round(box_r, 4)
+            metrics["box_f1"]        = round(box_f1, 4)
+            if segm:
+                mask_p, mask_r, mask_f1 = _compute_precision_recall_f1(
+                    coco_gt, str(dt_json), "segm", score_thresh=score_thresh)
+                metrics["mask_precision"] = round(mask_p, 4)
+                metrics["mask_recall"]    = round(mask_r, 4)
+                metrics["mask_f1"]        = round(mask_f1, 4)
+        else:
+            print(f"  ⚠ Fichier de prédictions introuvable pour precision/recall : {dt_json}")
+    except Exception as e:
+        print(f"  ⚠ Extraction partielle (precision/recall/F1) : {e}")
 
     return metrics
 
