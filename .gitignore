@@ -1,0 +1,72 @@
+# ─── Python ──────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+.Python
+env/
+venv/
+.env/
+.venv/
+pip-wheel-metadata/
+
+# ─── Jupyter ─────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# ─── Poids de modèles ────────────────────────────────────────
+*.pt
+*.pth
+*.pkl
+*.weights
+*.onnx
+*.engine
+*.tflite
+*.torchscript
+
+# ─── Datasets ────────────────────────────────────────────────
+data/
+datasets/
+segmentation_fissures*/
+murs_sains/
+murs_sains_masques_noirs/
+*.zip
+*.tar.gz
+*.tar
+
+# ─── Sorties ─────────────────────────────────────────────────
+outputs/yolov11/
+outputs/maskrcnn/
+outputs/inference/
+outputs/evaluation/
+# Conserver la structure du dossier outputs/
+!outputs/.gitkeep
+
+# ─── Logs ────────────────────────────────────────────────────
+runs/
+logs/
+*.log
+events.out.tfevents.*
+
+# ─── OS ──────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# ─── IDE ─────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# ─── Temporaire ──────────────────────────────────────────────
+tmp/
+temp/
+configs/dataset_yolo.yaml    # Généré automatiquement
